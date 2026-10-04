@@ -88,6 +88,12 @@
   .verdict.ok { background: var(--correct-bg); color: var(--correct-border); }
   .verdict.ng { background: var(--wrong-bg); color: var(--wrong-border); }
 
+  /* 解説 */
+  .explanation { margin-top: 14px; padding: 16px 18px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 8px; background: #f8fafc; display: none; }
+  .explanation.show { display: block; }
+  .explanation .exp-title { font-weight: 700; color: var(--primary); font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .explanation .exp-body { white-space: pre-wrap; font-size: 14.5px; color: var(--text); }
+
   .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
   button.btn {
     border: none; border-radius: 8px; padding: 11px 20px; font-size: 15px; font-weight: 600;
@@ -360,6 +366,24 @@
         : "不正解。正解は " + normalize(q.answer).join(", ") + " です。";
     }
     card.appendChild(verdict);
+
+    // 解説表示（回答後、解説データがある場合のみ）
+    if (answered && q.explanation) {
+      var exp = document.createElement("div");
+      exp.className = "explanation show";
+
+      var expTitle = document.createElement("div");
+      expTitle.className = "exp-title";
+      expTitle.textContent = "💡 解説";
+      exp.appendChild(expTitle);
+
+      var expBody = document.createElement("div");
+      expBody.className = "exp-body";
+      expBody.textContent = q.explanation;
+      exp.appendChild(expBody);
+
+      card.appendChild(exp);
+    }
 
     // アクション
     var actions = document.createElement("div");
