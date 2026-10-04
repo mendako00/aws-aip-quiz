@@ -1,0 +1,10 @@
+# スクショ（元画像）は公開対象外
+# - ツール動作には不要（問題データは data/questions.js に転記済み）
+# - 第三者サイトの問題画像のため公開を避ける
+images/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+*.log

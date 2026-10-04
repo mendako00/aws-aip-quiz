@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS AIP 模擬試験 演習ツール</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --border: #e2e6ec;
+    --text: #1b2733;
+    --muted: #6b7785;
+    --primary: #0a66c2;
+    --primary-dark: #084a8c;
+    --correct-bg: #e6f8ef;
+    --correct-border: #27ae60;
+    --wrong-bg: #fdecec;
+    --wrong-border: #e74c3c;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 20px; }
+
+  /* 進捗バー */
+  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 18px; }
+  .progress-bar > div { height: 100%; background: var(--primary); width: 0; transition: width .3s; }
+
+  /* ナビ（問題番号） */
+  .nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .nav button {
+    width: 42px; height: 42px; border: 1px solid var(--border); background: var(--panel);
+    border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text);
+    transition: all .15s;
+  }
+  .nav button:hover { border-color: var(--primary); }
+  .nav button.current { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(10,102,194,.2); }
+  .nav button.correct { background: var(--correct-bg); border-color: var(--correct-border); color: var(--correct-border); }
+  .nav button.wrong { background: var(--wrong-bg); border-color: var(--wrong-border); color: var(--wrong-border); }
+
+  /* カード */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 22px; }
+  .qhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .qid { font-weight: 700; color: var(--primary); font-size: 16px; }
+  .qcount { color: var(--muted); font-size: 14px; }
+  .qtype { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .question { white-space: pre-wrap; font-size: 15.5px; margin-bottom: 18px; }
+
+  .choices { display: flex; flex-direction: column; gap: 12px; }
+  .choice {
+    display: flex; gap: 12px; align-items: flex-start;
+    border: 1.5px solid var(--border); border-radius: 10px; padding: 14px 16px;
+    cursor: pointer; background: var(--panel); transition: border-color .15s, background .15s;
+  }
+  .choice:hover { border-color: var(--primary); }
+  .choice.selected { border-color: var(--primary); background: rgba(10,102,194,.04); }
+  .choice.correct { border-color: var(--correct-border); background: var(--correct-bg); }
+  .choice.wrong { border-color: var(--wrong-border); background: var(--wrong-bg); }
+  .choice.disabled { cursor: default; }
+  .choice .label { font-weight: 700; min-width: 22px; }
+  .choice .body { flex: 1; }
+  .choice input { margin-top: 4px; }
+
+  .verdict { margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-weight: 600; display: none; }
+  .verdict.show { display: block; }
+  .verdict.ok { background: var(--correct-bg); color: var(--correct-border); }
+  .verdict.ng { background: var(--wrong-bg); color: var(--wrong-border); }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  button.btn {
+    border: none; border-radius: 8px; padding: 11px 20px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background .15s, opacity .15s;
+  }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--primary); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: var(--primary-dark); }
+  .btn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+  .btn.ghost:hover:not(:disabled) { border-color: var(--primary); }
+  .spacer { flex: 1; }
+
+  /* ツールバー */
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar .btn { padding: 8px 14px; font-size: 13px; }
+
+  /* 結果画面 */
+  .result { text-align: center; padding: 20px; }
+  .result .score { font-size: 48px; font-weight: 800; color: var(--primary); }
+  .result .ratio { font-size: 18px; color: var(--muted); margin-bottom: 20px; }
+  .result-list { text-align: left; margin-top: 24px; }
+  .result-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: center; }
+  .badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .badge.ok { background: var(--correct-bg); color: var(--correct-border); }
+  .badge.ng { background: var(--wrong-bg); color: var(--wrong-border); }
+  .badge.na { background: #eee; color: var(--muted); }
+  .result-row .rid { font-weight: 600; min-width: 76px; }
+  .result-row .rlink { color: var(--primary); cursor: pointer; text-decoration: underline; font-size: 13px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AWS AIP 模擬試験 演習ツール</h1>
+  <span class="meta" id="headerMeta"></span>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <button class="btn ghost" id="btnShuffle">シャッフル: オフ</button>
+    <button class="btn ghost" id="btnReviewWrong">間違えた問題だけ復習</button>
+    <button class="btn ghost" id="btnReset">進捗リセット</button>
+    <button class="btn ghost" id="btnResult">成績を見る</button>
+  </div>
+
+  <div class="progress-bar"><div id="progressFill"></div></div>
+  <div class="nav" id="nav"></div>
+
+  <div id="main"></div>
+</div>
+
+<footer>データ: cloud-license.com AWS AIP 模試より / ローカル学習用</footer>
+
+<script src="data/questions.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "aws_aip_quiz_progress_v1";
+  var allQuestions = (window.QUIZ_DATA || []).slice();
+
+  // 状態: { answers: { [id]: selected }, shuffle: bool, order: [ids], mode: 'all'|'wrong', current: index }
+  var state = loadState();
+
+  function loadState() {
+    var def = { answers: {}, shuffle: false, mode: "all", current: 0 };
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var p = JSON.parse(raw);
+        return {
+          answers: p.answers || {},
+          shuffle: !!p.shuffle,
+          mode: p.mode || "all",
+          current: p.current || 0
+        };
+      }
+    } catch (e) {}
+    return def;
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // 現在の出題リストを構築
+  function buildList() {
+    var list = allQuestions.slice();
+    if (state.mode === "wrong") {
+      list = list.filter(function (q) {
+        var a = state.answers[q.id];
+        return a && !isCorrect(q, a.selected);
+      });
+    }
+    if (state.shuffle) {
+      // 固定シードなしのシャッフル（セッション内で安定させるためorderを保持）
+      list = shuffleArray(list);
+    }
+    return list;
+  }
+
+  function shuffleArray(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  var currentList = buildList();
+
+  function normalize(ans) {
+    // 単一も配列に揃えて比較
+    return Array.isArray(ans) ? ans.slice().sort() : [ans];
+  }
+
+  function isCorrect(q, selected) {
+    if (selected == null) return false;
+    var a = normalize(q.answer).join(",");
+    var s = normalize(selected).join(",");
+    return a === s;
+  }
+
+  // ---- レンダリング ----
+  var mainEl = document.getElementById("main");
+  var navEl = document.getElementById("nav");
+  var progressFill = document.getElementById("progressFill");
+  var headerMeta = document.getElementById("headerMeta");
+
+  function renderNav() {
+    navEl.innerHTML = "";
+    currentList.forEach(function (q, idx) {
+      var b = document.createElement("button");
+      b.textContent = idx + 1;
+      b.title = q.id;
+      if (idx === state.current) b.classList.add("current");
+      var a = state.answers[q.id];
+      if (a) b.classList.add(isCorrect(q, a.selected) ? "correct" : "wrong");
+      b.addEventListener("click", function () {
+        state.current = idx; saveState(); render();
+      });
+      navEl.appendChild(b);
+    });
+  }
+
+  function renderProgress() {
+    var answered = currentList.filter(function (q) { return state.answers[q.id]; }).length;
+    var pct = currentList.length ? Math.round((answered / currentList.length) * 100) : 0;
+    progressFill.style.width = pct + "%";
+    var correct = currentList.filter(function (q) {
+      var a = state.answers[q.id];
+      return a && isCorrect(q, a.selected);
+    }).length;
+    headerMeta.textContent = "回答 " + answered + "/" + currentList.length + " ・ 正解 " + correct;
+  }
+
+  function render() {
+    renderNav();
+    renderProgress();
+
+    if (currentList.length === 0) {
+      mainEl.innerHTML = '<div class="card"><div class="empty">表示できる問題がありません。<br>「間違えた問題だけ復習」を解除するか、進捗をリセットしてください。</div></div>';
+      return;
+    }
+    if (state.current >= currentList.length) state.current = currentList.length - 1;
+    if (state.current < 0) state.current = 0;
+
+    var q = currentList[state.current];
+    var saved = state.answers[q.id];
+    var answered = !!saved;
+    var isMulti = q.type === "multiple";
+
+    var card = document.createElement("div");
+    card.className = "card";
+
+    var head = document.createElement("div");
+    head.className = "qhead";
+    head.innerHTML =
+      '<span class="qid">' + escapeHtml(q.id) + '</span>' +
+      '<span class="qcount">' + (state.current + 1) + " / " + currentList.length + "</span>";
+    card.appendChild(head);
+
+    var typeEl = document.createElement("div");
+    typeEl.className = "qtype";
+    typeEl.textContent = isMulti ? "複数選択（当てはまるものをすべて選択）" : "単一選択";
+    card.appendChild(typeEl);
+
+    var qEl = document.createElement("div");
+    qEl.className = "question";
+    qEl.textContent = q.question;
+    card.appendChild(qEl);
+
+    var choicesEl = document.createElement("div");
+    choicesEl.className = "choices";
+
+    var selectedNow = answered ? normalize(saved.selected) : [];
+
+    Object.keys(q.choices).forEach(function (key) {
+      var label = document.createElement("label");
+      label.className = "choice";
+      if (answered) label.classList.add("disabled");
+
+      var input = document.createElement("input");
+      input.type = isMulti ? "checkbox" : "radio";
+      input.name = "choice";
+      input.value = key;
+      input.disabled = answered;
+      if (selectedNow.indexOf(key) !== -1) input.checked = true;
+
+      var lab = document.createElement("span");
+      lab.className = "label";
+      lab.textContent = key + ".";
+
+      var body = document.createElement("span");
+      body.className = "body";
+      body.textContent = q.choices[key];
+
+      label.appendChild(input);
+      label.appendChild(lab);
+      label.appendChild(body);
+
+      if (answered) {
+        var correctKeys = normalize(q.answer);
+        if (correctKeys.indexOf(key) !== -1) {
+          label.classList.add("correct");
+        } else if (selectedNow.indexOf(key) !== -1) {
+          label.classList.add("wrong");
+        }
+      } else {
+        label.addEventListener("click", function () {
+          setTimeout(updateSelectedStyle, 0);
+        });
+      }
+
+      choicesEl.appendChild(label);
+    });
+    card.appendChild(choicesEl);
+
+    function updateSelectedStyle() {
+      var inputs = choicesEl.querySelectorAll("input");
+      inputs.forEach(function (inp) {
+        inp.closest(".choice").classList.toggle("selected", inp.checked);
+      });
+    }
+    updateSelectedStyle();
+
+    // 判定表示
+    var verdict = document.createElement("div");
+    verdict.className = "verdict";
+    if (answered) {
+      var ok = isCorrect(q, saved.selected);
+      verdict.classList.add("show", ok ? "ok" : "ng");
+      verdict.textContent = ok
+        ? "正解！"
+        : "不正解。正解は " + normalize(q.answer).join(", ") + " です。";
+    }
+    card.appendChild(verdict);
+
+    // アクション
+    var actions = document.createElement("div");
+    actions.className = "actions";
+
+    var prevBtn = document.createElement("button");
+    prevBtn.className = "btn ghost";
+    prevBtn.textContent = "← 前へ";
+    prevBtn.disabled = state.current === 0;
+    prevBtn.addEventListener("click", function () { state.current--; saveState(); render(); });
+
+    var answerBtn = document.createElement("button");
+    answerBtn.className = "btn primary";
+    answerBtn.textContent = "回答する";
+    answerBtn.disabled = answered;
+    answerBtn.addEventListener("click", function () {
+      var inputs = choicesEl.querySelectorAll("input:checked");
+      if (inputs.length === 0) { alert("選択肢を選んでください。"); return; }
+      var sel;
+      if (isMulti) {
+        sel = Array.prototype.map.call(inputs, function (i) { return i.value; });
+      } else {
+        sel = inputs[0].value;
+      }
+      state.answers[q.id] = { selected: sel };
+      saveState();
+      render();
+    });
+
+    var spacer = document.createElement("div");
+    spacer.className = "spacer";
+
+    var nextBtn = document.createElement("button");
+    nextBtn.className = "btn primary";
+    nextBtn.textContent = state.current === currentList.length - 1 ? "成績を見る →" : "次へ →";
+    nextBtn.addEventListener("click", function () {
+      if (state.current === currentList.length - 1) {
+        renderResult();
+      } else {
+        state.current++; saveState(); render();
+      }
+    });
+
+    actions.appendChild(prevBtn);
+    actions.appendChild(answerBtn);
+    actions.appendChild(spacer);
+    actions.appendChild(nextBtn);
+    card.appendChild(actions);
+
+    mainEl.innerHTML = "";
+    mainEl.appendChild(card);
+  }
+
+  function renderResult() {
+    var total = currentList.length;
+    var answeredList = currentList.filter(function (q) { return state.answers[q.id]; });
+    var correct = answeredList.filter(function (q) {
+      return isCorrect(q, state.answers[q.id].selected);
+    }).length;
+    var pct = total ? Math.round((correct / total) * 100) : 0;
+
+    var html = '<div class="card result">';
+    html += '<div class="score">' + pct + "%</div>";
+    html += '<div class="ratio">' + total + " 問中 " + correct + " 問正解</div>";
+    html += '<div class="actions" style="justify-content:center;">';
+    html += '<button class="btn ghost" id="rBackTop">最初から見直す</button>';
+    html += '<button class="btn primary" id="rReviewWrong">間違えた問題だけ復習</button>';
+    html += "</div>";
+
+    html += '<div class="result-list">';
+    currentList.forEach(function (q, idx) {
+      var a = state.answers[q.id];
+      var cls = "na", txt = "未回答", pick = "-";
+      if (a) {
+        var ok = isCorrect(q, a.selected);
+        cls = ok ? "ok" : "ng";
+        txt = ok ? "正解" : "不正解";
+        pick = normalize(a.selected).join(", ");
+      }
+      html += '<div class="result-row">';
+      html += '<span class="badge ' + cls + '">' + txt + "</span>";
+      html += '<span class="rid">' + escapeHtml(q.id) + "</span>";
+      html += '<span style="flex:1;color:var(--muted);font-size:13px;">あなた: ' + pick +
+              " / 正解: " + normalize(q.answer).join(", ") + "</span>";
+      html += '<span class="rlink" data-idx="' + idx + '">見る</span>';
+      html += "</div>";
+    });
+    html += "</div></div>";
+
+    mainEl.innerHTML = html;
+
+    document.getElementById("rBackTop").addEventListener("click", function () {
+      state.current = 0; saveState(); render();
+    });
+    document.getElementById("rReviewWrong").addEventListener("click", function () {
+      setMode("wrong");
+    });
+    Array.prototype.forEach.call(mainEl.querySelectorAll(".rlink"), function (el) {
+      el.addEventListener("click", function () {
+        state.current = parseInt(el.getAttribute("data-idx"), 10);
+        saveState(); render();
+      });
+    });
+  }
+
+  // ---- ツールバー操作 ----
+  function setMode(mode) {
+    state.mode = mode;
+    state.current = 0;
+    currentList = buildList();
+    saveState();
+    updateToolbarLabels();
+    render();
+  }
+
+  function updateToolbarLabels() {
+    document.getElementById("btnShuffle").textContent = "シャッフル: " + (state.shuffle ? "オン" : "オフ");
+    var rw = document.getElementById("btnReviewWrong");
+    rw.textContent = state.mode === "wrong" ? "全問に戻す" : "間違えた問題だけ復習";
+  }
+
+  document.getElementById("btnShuffle").addEventListener("click", function () {
+    state.shuffle = !state.shuffle;
+    state.current = 0;
+    currentList = buildList();
+    saveState();
+    updateToolbarLabels();
+    render();
+  });
+
+  document.getElementById("btnReviewWrong").addEventListener("click", function () {
+    setMode(state.mode === "wrong" ? "all" : "wrong");
+  });
+
+  document.getElementById("btnReset").addEventListener("click", function () {
+    if (!confirm("回答履歴と進捗をすべて消去します。よろしいですか？")) return;
+    state = { answers: {}, shuffle: false, mode: "all", current: 0 };
+    currentList = buildList();
+    saveState();
+    updateToolbarLabels();
+    render();
+  });
+
+  document.getElementById("btnResult").addEventListener("click", renderResult);
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ---- 初期化 ----
+  if (allQuestions.length === 0) {
+    mainEl.innerHTML = '<div class="card"><div class="empty">問題データが読み込めませんでした。<br>data/questions.js を確認してください。</div></div>';
+  } else {
+    updateToolbarLabels();
+    render();
+  }
+})();
+</script>
+</body>
+</html>
