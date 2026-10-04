@@ -101,8 +101,14 @@
   .spacer { flex: 1; }
 
   /* ツールバー */
-  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
   .toolbar .btn { padding: 8px 14px; font-size: 13px; }
+  .sect-label { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .sect-select {
+    padding: 8px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); color: var(--text); cursor: pointer; font-weight: 600;
+  }
+  .sect-select:hover { border-color: var(--primary); }
 
   /* 結果画面 */
   .result { text-align: center; padding: 20px; }
@@ -129,6 +135,8 @@
 
 <div class="wrap">
   <div class="toolbar">
+    <label class="sect-label" for="selSection">セクション</label>
+    <select id="selSection" class="sect-select"></select>
     <button class="btn ghost" id="btnShuffle">シャッフル: オフ</button>
     <button class="btn ghost" id="btnReviewWrong">間違えた問題だけ復習</button>
     <button class="btn ghost" id="btnReset">進捗リセット</button>
@@ -151,11 +159,11 @@
   var STORAGE_KEY = "aws_aip_quiz_progress_v1";
   var allQuestions = (window.QUIZ_DATA || []).slice();
 
-  // 状態: { answers: { [id]: selected }, shuffle: bool, order: [ids], mode: 'all'|'wrong', current: index }
+  // 状態: { answers, shuffle, mode:'all'|'wrong', current, section:'all'|<number> }
   var state = loadState();
 
   function loadState() {
-    var def = { answers: {}, shuffle: false, mode: "all", current: 0 };
+    var def = { answers: {}, shuffle: false, mode: "all", current: 0, section: "all" };
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -164,7 +172,8 @@
           answers: p.answers || {},
           shuffle: !!p.shuffle,
           mode: p.mode || "all",
-          current: p.current || 0
+          current: p.current || 0,
+          section: (p.section === undefined || p.section === null) ? "all" : p.section
         };
       }
     } catch (e) {}
@@ -178,6 +187,9 @@
   // 現在の出題リストを構築
   function buildList() {
     var list = allQuestions.slice();
+    if (state.section !== "all") {
+      list = list.filter(function (q) { return String(q.section) === String(state.section); });
+    }
     if (state.mode === "wrong") {
       list = list.filter(function (q) {
         var a = state.answers[q.id];
@@ -469,6 +481,45 @@
     rw.textContent = state.mode === "wrong" ? "全問に戻す" : "間違えた問題だけ復習";
   }
 
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  function buildSectionSelect() {
+    var sel = document.getElementById("selSection");
+    // 存在するセクション番号を昇順で収集
+    var sections = [];
+    allQuestions.forEach(function (q) {
+      if (sections.indexOf(q.section) === -1) sections.push(q.section);
+    });
+    sections.sort(function (a, b) { return a - b; });
+
+    sel.innerHTML = "";
+    var optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = "すべて (" + allQuestions.length + "問)";
+    sel.appendChild(optAll);
+
+    sections.forEach(function (s) {
+      var count = allQuestions.filter(function (q) { return q.section === s; }).length;
+      var o = document.createElement("option");
+      o.value = String(s);
+      o.textContent = "AIP#" + pad2(s) + " (" + count + "問)";
+      sel.appendChild(o);
+    });
+
+    // 保存された選択を反映（存在しない場合は all に戻す）
+    var exists = state.section === "all" || sections.map(String).indexOf(String(state.section)) !== -1;
+    if (!exists) state.section = "all";
+    sel.value = String(state.section);
+
+    sel.addEventListener("change", function () {
+      state.section = sel.value === "all" ? "all" : Number(sel.value);
+      state.current = 0;
+      currentList = buildList();
+      saveState();
+      render();
+    });
+  }
+
   document.getElementById("btnShuffle").addEventListener("click", function () {
     state.shuffle = !state.shuffle;
     state.current = 0;
@@ -484,9 +535,10 @@
 
   document.getElementById("btnReset").addEventListener("click", function () {
     if (!confirm("回答履歴と進捗をすべて消去します。よろしいですか？")) return;
-    state = { answers: {}, shuffle: false, mode: "all", current: 0 };
+    state = { answers: {}, shuffle: false, mode: "all", current: 0, section: "all" };
     currentList = buildList();
     saveState();
+    document.getElementById("selSection").value = "all";
     updateToolbarLabels();
     render();
   });
@@ -503,6 +555,7 @@
   if (allQuestions.length === 0) {
     mainEl.innerHTML = '<div class="card"><div class="empty">問題データが読み込めませんでした。<br>data/questions.js を確認してください。</div></div>';
   } else {
+    buildSectionSelect();
     updateToolbarLabels();
     render();
   }
